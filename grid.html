@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Document</title>
+</head>
+
+    <style>
+        body {
+            background: #f0ebdd;
+            height: 100vh;
+            width: 100vw;
+            padding: 0;
+            margin: 0;
+        }
+
+        #bg,
+        #viruses,
+        #mc {
+            transform: translate(-50%, -50%);
+            background: transparent;
+            position: absolute;
+            display: block;
+            padding: 0;
+            margin: 0;
+            left: 50%;
+            top: 50%;
+        }
+
+        #bg {
+            z-index: 1;
+        }
+
+        #viruses {
+            z-index: 2;
+        }
+
+        #mc {
+            z-index: 3;
+        }
+
+        #map {
+            background: black;
+        }
+
+    </style>
+
+<body>
+
+    <div>
+        <canvas id="bg"></canvas>
+        <canvas id="viruses"></canvas>
+        <canvas id="mc"></canvas>
+    </div>
+
+    <script type="text/javascript">
+        class Camera {
+            constructor(viewportW, viewportH, worldW, worldH) {
+                this.x         = 1000;
+                this.y         = 1000;
+                this.viewportW = viewportW;
+                this.viewportH = viewportH;
+                this.worldW    = worldW;
+                this.worldH    = worldH;
+            }
+
+            getXOffset() {
+                if (this.observable) {
+                    this.x = this.observable.x - (this.viewportW / 2);
+
+                    if (this.x < 0) {
+                        this.x = 0;
+                    }
+
+                    if (this.x + this.viewportW > worldW) {
+                        this.x = worldW - this.viewportW;
+                    }
+                }
+
+                return this.x;
+            }
+
+            getYOffset() {
+                if (this.observable) {
+                    this.y = this.observable.y - (this.viewportH / 2);
+
+                    if (this.y < 0) {
+                        this.y = 0;
+                    }
+
+                    if (this.y + this.viewportH > worldH) {
+                        this.y = worldH - this.viewportH;
+                    }
+                }
+
+                return this.y;
+            }
+
+            setX(x) {
+                if (x <= this.worldW) {
+                    this.x = x;
+                    forceRerender();
+                }
+            }
+
+            setY(y) {
+                if (this.y + y <= this.worldH) {
+                    this.y = y;
+                    forceRerender();
+                }
+            }
+
+            moveXRel(x) {
+                const cameraXBoundary = this.x + x + 200;
+
+                if (cameraXBoundary >= this.worldW || (this.x + x < -200)) {
+                    return;
+                }
+
+                this.x += x;
+                forceRerender();
+            }
+
+            moveYRel(y) {
+                const cameraYBoundary = this.y + y + 200;
+
+                if (cameraYBoundary >= this.worldH || (this.y + y) < -200) {
+                    return;
+                }
+
+                this.y += y;
+                forceRerender();
+            }
+
+            observe(object) {
+                this.observable = object;
+            }
+        }
+    </script>
+
+    <script type="text/javascript">
+        let fieldObj = {}
+
+        for (let row = 0; row < 100; row++) {
+            fieldObj[row] = {};
+
+            for (let col = 0; col < 100; col++) {
+                fieldObj[row][col] = '';
+            }
+        }
+
+        const canvas = document.querySelector('#mc');
+        const viruses = document.querySelector('#viruses');
+        const bg = document.querySelector('#bg');
+        const w = 2000;
+        const h = 2000;
+        const viewportW  = 600;
+        const viewportH  = 400;
+        let started = false;
+
+        window.mainCamera = new Camera(viewportW, viewportH, w, h);
+
+        var virusesCtx = viruses.getContext('2d');
+        var ctx = canvas.getContext('2d');
+        canvas.width  = viruses.width  = bg.width  = viewportW;
+        canvas.height = viruses.height = bg.height = viewportH;
+
+        ctx.globalAlpha = 0.5;
+
+        function createGrid(w, h) {
+            var data = `<svg width="${w}px" height="${h}px" xmlns="http://www.w3.org/2000/svg"> \
+                <defs> \
+                    <pattern id="smallGrid" width="20" height="20" patternUnits="userSpaceOnUse"> \
+                        <path d="M 20 0 L 0 0 0 20" fill="none" stroke="black" stroke-width="1" /> \
+                    </pattern> \
+                    <pattern id="grid" width="90" height="90" patternUnits="userSpaceOnUse"> \
+                        <rect width="80" height="80" fill="url(#smallGrid)" /> \
+                        <path d="M 80 0 L 0 0 0 80" fill="none" stroke="black" stroke-width="1" /> \
+                    </pattern> \
+                </defs> \
+                <rect width="100%" height="100%" fill="url(#smallGrid)" /> \
+            </svg>`;
+
+            var DOMURL = window.URL || window.webkitURL || window;
+
+            var img = new Image();
+            var svg = new Blob([data], {type: 'image/svg+xml;charset=utf-8'});
+            var url = DOMURL.createObjectURL(svg);
+
+            img.src = url;
+
+            return img;
+        }
+
+        function drawGrid(ctx, grid, camera) {
+            let xView = camera.getXOffset();
+            let yView = camera.getYOffset();
+
+            let sx, sy, dx, dy;
+            let sWidth, sHeight, dWidth, dHeight;
+
+            // offset point to crop the image
+            sx = xView;
+            sy = yView;
+
+            // dimensions of cropped image
+            sWidth = viewportW;
+            sHeight = viewportH;
+
+            // if cropped image is smaller than canvas we need to change the source dimensions
+            if (grid.width - sx < sWidth) {
+              sWidth = grid.width - sx;
+            }
+            if (grid.height - sy < sHeight) {
+              sHeight = grid.height - sy;
+            }
+
+            // location on canvas to draw the croped image
+            dx = 0;
+            dy = 0;
+            // match destination with source to not scale the image
+            dWidth = sWidth;
+            dHeight = sHeight;
+
+            ctx.drawImage(grid, sx, sy, sWidth, sHeight, dx, dy, dWidth, dHeight);
+        }
+
+        const grid = createGrid(w, h);
+        const bgCtx = bg.getContext('2d');
+        grid.onload = () => drawGrid(bgCtx, grid, mainCamera);
+
+        function drawObject() {
+            virusesCtx.clearRect(0, 0, viewportW, viewportH);
+            virusesCtx.fillStyle = 'red';
+            virusesCtx.font = '20px serif';
+
+            for (let row = 0; row < 100; row++) {
+                for (let col = 0; col < 100; col++) {
+                    if (fieldObj[row][col]) {
+                        const x = col * 20 + 3;
+                        const y = row * 20 + 17;
+
+                        fillText(virusesCtx, fieldObj[row][col], x, y, 19, 'red');
+                    }
+                }
+            }
+        }
+
+        function hasAdjacents(row, col) {
+            for (let i = -1; i < 2; i++) {
+                for (let j = -1; j < 2; j++) {
+                    if (row + i < 0) continue;
+                    if (col + j < 0) continue;
+
+                    if (fieldObj[row + i][col + j]) {
+                        return true;
+                    }
+                }
+            }
+        }
+
+        function forceRerender() {
+            bgCtx.clearRect(0, 0, viewportW, viewportH);
+            ctx.clearRect(0, 0, viewportW, viewportH);
+            virusesCtx.clearRect(0, 0, viewportW, viewportH);
+
+            drawGrid(bgCtx, grid, mainCamera);
+            drawObject();
+        }
+
+        let col, row;
+
+        canvas.onmousemove = (e) => {
+            let x = e.clientX - canvas.getBoundingClientRect().left + mainCamera.x;
+            let y = e.clientY - canvas.getBoundingClientRect().top + mainCamera.y;
+
+            if (x > w || y > h) {
+                return;
+            }
+
+            let rerender = false;
+
+            if (Math.floor(x / 20) !== col) {
+                col = Math.floor(x / 20);
+                rerender = true;
+            }
+
+            if (Math.floor(y / 20) !== row) {
+                row = Math.floor(y / 20);
+                rerender = true;
+            }
+
+            if (rerender) {
+                ctx.clearRect(0, 0, w, h);
+
+                ctx.fillStyle = 'green';
+                fillRect(ctx, (col * 20) + 1, (row * 20) + 1, 19, 19);
+            }
+        }
+
+        canvas.onclick = (async (e) => {
+            let x = e.clientX - canvas.getBoundingClientRect().left + mainCamera.x;
+            let y = e.clientY - canvas.getBoundingClientRect().top + mainCamera.y;
+
+            if (x > w || y > h) {
+                return;
+            }
+
+            const col = Math.floor(x / 20);
+            const row = Math.floor(y / 20);
+
+            if (!started || hasAdjacents(row, col) && fieldObj[row][col] !== 'X') {
+                fieldObj[row][col] = 'X';
+                drawObject();
+                started = true;
+            }
+        })
+
+        function fillRect(ctx, x, y, w, h, c) {
+            x -= mainCamera.getXOffset();
+            y -= mainCamera.getYOffset();
+
+            ctx.fillStyle = c;
+            ctx.fillRect(x, y, w, h);
+        }
+
+        function fillText(ctx, text, x, y, mw, c) {
+            x -= mainCamera.getXOffset();
+            y -= mainCamera.getYOffset();
+
+            ctx.fillStyle = c;
+            ctx.fillText(text, x, y, mw);
+            ctx.fillStyle = 'yellow';
+        }
+    </script>
+
+    <script type="text/javascript">
+        /*let mousedown = false;
+
+        document.addEventListener('mousedown', () => mousedown = true);
+        document.addEventListener('mouseup', () => mousedown = false);
+
+        document.addEventListener('mousemove', (e) => {
+            if (!mousedown) {
+                return;
+            }
+
+            const x = e.clientX - canvas.getBoundingClientRect().left;
+            const y = e.clientY - canvas.getBoundingClientRect().top;
+
+            window.mainCamera.moveXRel(x);
+            window.mainCamera.moveYRel(y);
+        });*/
+
+        document.addEventListener('keydown', (e) => {
+            switch (e.code) {
+                case 'KeyW': // up
+                    mainCamera.moveYRel(-15);
+
+                    break;
+
+                case 'KeyD': // right
+                    mainCamera.moveXRel(15);
+
+                    break;
+
+                case 'KeyS': // down
+                    mainCamera.moveYRel(15);
+
+                    break;
+
+                case 'KeyA': // left
+                    mainCamera.moveXRel(-15);
+
+                    break;
+            }
+        })
+    </script>
+    
+</body>
+</html>
