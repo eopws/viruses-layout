@@ -49,6 +49,11 @@
 <body>
 
     <div>
+        Camera X: <span id="camX"></span><br>
+        Camera Y: <span id="camY"></span>
+    </div>
+
+    <div>
         <canvas id="bg"></canvas>
         <canvas id="viruses"></canvas>
         <canvas id="mc"></canvas>
@@ -57,8 +62,8 @@
     <script type="text/javascript">
         class Camera {
             constructor(viewportW, viewportH, worldW, worldH) {
-                this.x         = 1000;
-                this.y         = 1000;
+                this.x         = 0;
+                this.y         = 0;
                 this.viewportW = viewportW;
                 this.viewportH = viewportH;
                 this.worldW    = worldW;
@@ -101,6 +106,7 @@
                 if (x <= this.worldW) {
                     this.x = x;
                     forceRerender();
+                    this.logCamPosition();
                 }
             }
 
@@ -108,6 +114,7 @@
                 if (this.y + y <= this.worldH) {
                     this.y = y;
                     forceRerender();
+                    this.logCamPosition();
                 }
             }
 
@@ -120,6 +127,7 @@
 
                 this.x += x;
                 forceRerender();
+                this.logCamPosition();
             }
 
             moveYRel(y) {
@@ -131,6 +139,20 @@
 
                 this.y += y;
                 forceRerender();
+                this.logCamPosition();
+            }
+
+            logCamPosition() {
+                if (!this.camXSpan) {
+                    this.camXSpan = document.querySelector('#camX');
+                }
+
+                if (!this.camYSpan) {
+                    this.camYSpan = document.querySelector('#camY');
+                }
+
+                this.camXSpan.innerHTML = this.x;
+                this.camYSpan.innerHTML = this.y;
             }
 
             observe(object) {
@@ -146,11 +168,15 @@
             fieldObj[row] = {};
 
             for (let col = 0; col < 100; col++) {
-                fieldObj[row][col] = '';
+                if (col % 10 === 0) {
+                    fieldObj[row][col] = 'X';
+                } else {
+                    fieldObj[row][col] = '';
+                }
             }
         }
 
-        const canvas = document.querySelector('#mc');
+        var canvas = document.querySelector('#mc');
         const viruses = document.querySelector('#viruses');
         const bg = document.querySelector('#bg');
         const w = 2000;
@@ -275,7 +301,7 @@
             let x = e.clientX - canvas.getBoundingClientRect().left + mainCamera.x;
             let y = e.clientY - canvas.getBoundingClientRect().top + mainCamera.y;
 
-            if (x > w || y > h) {
+            if ((x > w || y > h) || (x < 0 || y < 0)) {
                 return;
             }
 
@@ -299,7 +325,13 @@
             }
         }
 
-        canvas.onclick = (async (e) => {
+        let quickClick = false;
+
+        canvas.onmouseup = ((e) => {
+            if (!quickClick) {
+                return;
+            }
+
             let x = e.clientX - canvas.getBoundingClientRect().left + mainCamera.x;
             let y = e.clientY - canvas.getBoundingClientRect().top + mainCamera.y;
 
@@ -315,6 +347,12 @@
                 drawObject();
                 started = true;
             }
+        });
+
+        canvas.onmousedown = (async (e) => {
+            quickClick = true;
+
+            setTimeout(() => quickClick = false, 120);
         })
 
         function fillRect(ctx, x, y, w, h, c) {
@@ -336,24 +374,55 @@
     </script>
 
     <script type="text/javascript">
-        /*let mousedown = false;
+        let mousedown = false;
+        let shiftdown = false;
 
-        document.addEventListener('mousedown', () => mousedown = true);
-        document.addEventListener('mouseup', () => mousedown = false);
+        document.addEventListener('mousedown', () => {
+            mousedown = true;
+        });
+        document.addEventListener('mouseup', () => {
+            mousedown = false;
+        });
 
+        document.addEventListener('keydown', (e) => {
+            shiftdown = e.shiftKey;
+        });
+        document.addEventListener('keyup', (e) => {
+            shiftdown = e.shiftKey;
+        });
+
+        let prevX, prevY;
+        let nullifyTimer;
         document.addEventListener('mousemove', (e) => {
-            if (!mousedown) {
+            if (!mousedown || !shiftdown) {
                 return;
             }
 
-            const x = e.clientX - canvas.getBoundingClientRect().left;
-            const y = e.clientY - canvas.getBoundingClientRect().top;
+            clearTimeout(nullifyTimer);
 
-            window.mainCamera.moveXRel(x);
-            window.mainCamera.moveYRel(y);
-        });*/
+            const x  = e.clientX //- canvas.getBoundingClientRect().left;
+            const y  = e.clientY //- canvas.getBoundingClientRect().top;
 
-        document.addEventListener('keydown', (e) => {
+            if (prevX == null || prevY == null) {
+                prevX = x;
+                prevY = y;
+
+                return;
+            }
+
+            const camShiftX = x - prevX;
+            const camShiftY = y - prevY;
+
+            window.mainCamera.moveXRel(-camShiftX);
+            window.mainCamera.moveYRel(-camShiftY);
+
+            prevX = x;
+            prevY = y;
+
+            nullifyTimer = setTimeout(() => prevX = prevY = null, 100);
+        });
+
+        /*document.addEventListener('keydown', (e) => {
             switch (e.code) {
                 case 'KeyW': // up
                     mainCamera.moveYRel(-15);
@@ -375,7 +444,7 @@
 
                     break;
             }
-        })
+        })*/
     </script>
     
 </body>
